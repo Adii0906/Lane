@@ -1,0 +1,54 @@
+.hud {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  background: var(--asphalt-2);
+  border: 1px solid var(--asphalt-3);
+  min-width: 0;
+}
+
+.label {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--paint-faint);
+}
+
+.value {
+  font-size: clamp(26px, 4.4vw, 38px);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.unit {
+  font-size: 0.45em;
+  font-weight: 700;
+  letter-spacing: 0;
+  color: var(--paint-dim);
+}
+
+.timer .value {
+  transition: color var(--dur) var(--ease-out);
+}
+
+.low .value {
+  color: var(--amber);
+}
+
+@media (max-width: 420px) {
+  .cell {
+    padding: 8px 10px;
+  }
+}

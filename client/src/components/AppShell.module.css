@@ -1,0 +1,129 @@
+.shell {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px clamp(16px, 4vw, 32px);
+  max-width: 1120px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 800;
+  font-size: 22px;
+  letter-spacing: -0.03em;
+  color: var(--paint);
+  text-decoration: none;
+}
+
+.logoMark {
+  width: 28px;
+  height: 18px;
+  border-radius: 4px;
+  background: repeating-linear-gradient(90deg, var(--paint) 0 6px, transparent 6px 10px) center / 100% 3px no-repeat,
+    var(--coral);
+}
+
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.code {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  font-size: 14px;
+  padding: 6px 8px 6px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--asphalt-2);
+  border: 1px solid var(--asphalt-4);
+  color: var(--paint-dim);
+}
+
+.banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 10px 16px;
+  background: var(--amber);
+  color: var(--asphalt);
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--asphalt);
+  border-right-color: transparent;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.main {
+  flex: 1;
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 8px clamp(16px, 4vw, 32px) 48px;
+}
+
+.toastRegion {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+  padding: 0 16px;
+  z-index: 20;
+}
+
+.toast {
+  pointer-events: auto;
+  max-width: 460px;
+  border: 0;
+  border-radius: 999px;
+  padding: 10px 18px;
+  background: var(--paint);
+  color: var(--asphalt);
+  font-weight: 600;
+  font-size: 15px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  animation: toastIn var(--dur) var(--ease-spring) both;
+}
+
+.toastWarn {
+  background: var(--amber);
+}
+
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}

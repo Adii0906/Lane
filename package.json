@@ -1,0 +1,24 @@
+{
+  "name": "lane",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Lane: a real-time multiplayer typing race for 2-3 friends",
+  "type": "module",
+  "workspaces": [
+    "shared",
+    "server",
+    "client"
+  ],
+  "engines": {
+    "node": ">=18.18"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n server,client -c red,cyan \"npm run dev -w server\" \"npm run dev -w client\"",
+    "build": "npm run build -w client",
+    "start": "npm run start -w server",
+    "test": "npm run test -w server"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}

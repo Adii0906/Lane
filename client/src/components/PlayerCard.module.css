@@ -1,0 +1,164 @@
+.card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 150px;
+  padding: 16px;
+  border-radius: var(--radius);
+  background: var(--asphalt-2);
+  border: 2px solid var(--asphalt-3);
+  overflow: hidden;
+  animation: cardIn var(--dur) var(--ease-spring) both;
+  transition: border-color var(--dur) var(--ease-out), transform var(--dur) var(--ease-out);
+}
+
+.card::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 6px;
+  background: var(--car, transparent);
+  transform: scaleX(0.25);
+  transform-origin: left;
+  transition: transform var(--dur) var(--ease-out);
+}
+
+@keyframes cardIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.97);
+  }
+}
+
+.isReady {
+  border-color: var(--car);
+}
+
+.isReady::after {
+  transform: scaleX(1);
+}
+
+.offline {
+  opacity: 0.6;
+}
+
+.empty {
+  border-style: dashed;
+  border-color: var(--asphalt-4);
+  background: transparent;
+  justify-content: space-between;
+}
+
+.head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.lane {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--paint-faint);
+}
+
+.badges {
+  display: flex;
+  gap: 6px;
+}
+
+.badge {
+  font-size: 12px;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--paint);
+  color: var(--asphalt);
+}
+
+.you {
+  background: var(--asphalt-4);
+  color: var(--paint);
+}
+
+.body {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.swatch {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 20px;
+  border-radius: 6px 12px 4px 4px;
+  background: var(--car);
+}
+
+.name {
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--paint-dim);
+}
+
+.isReady .state {
+  color: var(--paint);
+}
+
+.check {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--car)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 8.5l2.5 2.5L12 5.5' stroke='%231E2024' stroke-width='2.2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+    center / 14px no-repeat;
+  animation: pop var(--dur) var(--ease-spring);
+}
+
+@keyframes pop {
+  from {
+    transform: scale(0);
+  }
+}
+
+.waiting {
+  font-weight: 600;
+  color: var(--paint-faint);
+}
+
+@media (max-width: 620px) {
+  .card {
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 6px 12px;
+  }
+
+  .head {
+    grid-column: 1 / -1;
+  }
+
+  .empty {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+  }
+}

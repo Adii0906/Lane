@@ -1,0 +1,56 @@
+.box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border-radius: var(--radius);
+  background: var(--asphalt-2);
+  border: 1px solid var(--asphalt-3);
+}
+
+.label {
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--paint-dim);
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+}
+
+.link {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid var(--asphalt-4);
+  background: var(--asphalt);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: var(--paint);
+}
+
+.button {
+  flex: 0 0 auto;
+  min-width: 72px;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 0;
+  background: var(--paint);
+  color: var(--asphalt);
+  font-weight: 800;
+  font-size: 15px;
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+
+.button:active {
+  transform: scale(0.96);
+}
+
+.share {
+  background: var(--asphalt-4);
+  color: var(--paint);
+}

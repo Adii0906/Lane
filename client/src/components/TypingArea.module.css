@@ -1,0 +1,160 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.viewport {
+  position: relative;
+  /* exactly three lines: no layout shift as the passage scrolls */
+  height: calc(3 * 1.6em + 32px);
+  font-family: var(--font-mono);
+  font-size: 24px;
+  padding: 16px clamp(14px, 3vw, 24px);
+  border-radius: var(--radius);
+  background: var(--asphalt-2);
+  border: 2px solid var(--asphalt-3);
+  overflow: hidden;
+  cursor: text;
+  transition: border-color var(--dur) var(--ease-out);
+}
+
+.viewport:focus-within {
+  border-color: var(--asphalt-4);
+}
+
+.isStalled .viewport {
+  border-color: var(--error);
+}
+
+.isFinished .viewport {
+  border-color: var(--teal);
+}
+
+.passage {
+  max-width: 62ch;
+  margin: 0;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: normal;
+  overflow-wrap: break-word;
+}
+
+.scroller {
+  display: block;
+  line-height: 1.6;
+  transition: transform 180ms var(--ease-out);
+}
+
+.typed {
+  color: var(--paint);
+}
+
+.untyped,
+.pending {
+  color: #a29e94;
+}
+
+.current {
+  border-radius: 4px;
+  text-decoration: underline;
+  text-decoration-color: var(--amber);
+  text-decoration-thickness: 3px;
+  text-underline-offset: 6px;
+}
+
+.cursor {
+  position: relative;
+  color: #a29e94;
+}
+
+.cursor::before {
+  content: '';
+  position: absolute;
+  left: -1px;
+  top: 0.15em;
+  bottom: 0.1em;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--amber);
+  animation: blink 1s steps(2, start) infinite;
+}
+
+.wrong {
+  color: var(--asphalt);
+  background: var(--error);
+  font-weight: 700;
+  border-radius: 3px;
+}
+
+.wrong::before {
+  background: var(--paint);
+  animation: none;
+}
+
+@keyframes blink {
+  to {
+    visibility: hidden;
+  }
+}
+
+.nudge {
+  animation: nudge 220ms var(--ease-out);
+}
+
+@keyframes nudge {
+  20% {
+    transform: translateX(-5px);
+  }
+  50% {
+    transform: translateX(4px);
+  }
+  80% {
+    transform: translateX(-2px);
+  }
+}
+
+/* The real input: invisible but focusable, kept inside the viewport so mobile keyboards scroll here.
+   16px+ font size prevents iOS zoom-on-focus. */
+.input {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  font-size: 16px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: transparent;
+  caret-color: transparent;
+  cursor: text;
+}
+
+.hint {
+  min-height: 24px;
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--paint-dim);
+  text-align: center;
+}
+
+.isStalled .hint {
+  color: #ff8a8d;
+}
+
+@media (max-width: 720px) {
+  .viewport {
+    font-size: 20px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cursor::before {
+    animation: none;
+  }
+  .nudge {
+    animation: none;
+  }
+}

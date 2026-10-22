@@ -1,0 +1,33 @@
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--asphalt-4);
+  background: var(--asphalt-2);
+  color: var(--paint-dim);
+  font-size: 14px;
+  font-weight: 600;
+  transition: color var(--dur-fast), border-color var(--dur-fast);
+}
+
+.toggle:hover {
+  color: var(--paint);
+}
+
+.toggle[aria-pressed='true'] {
+  color: var(--paint);
+  border-color: var(--paint-faint);
+}
+
+@media (max-width: 420px) {
+  .toggle span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+}
