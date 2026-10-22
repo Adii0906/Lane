@@ -185,9 +185,26 @@ export function createGameServer(overrides = {}) {
 
     on(EVENTS.CREATE_ROOM, (p, reply) => {
       if (!isPlayerId(p.playerId)) throw new RoomError(ERROR_CODES.BAD_REQUEST, 'Invalid player id');
+      const nickname = sanitizeNickname(p.nickname);
+      if (!nickname) throw new RoomError(ERROR_CODES.INVALID_NICKNAME, 'Nickname must be 2 to 16 characters');
       const room = createRoom();
       if (!room) throw new RoomError(ERROR_CODES.SERVER_BUSY, 'Too many rooms right now, try again soon');
-      reply({ ok: true, code: room.code });
+      const oldRoom = currentRoom();
+      if (oldRoom) {
+        socket.leave(oldRoom.code);
+        oldRoom.leave(socket.data.playerId);
+      }
+      socket.data.playerId = p.playerId;
+      socket.data.roomCode = room.code;
+      socket.join(room.code);
+      const joined = room.join({ playerId: p.playerId, nickname, socketId: socket.id });
+      reply({
+        ok: true,
+        code: room.code,
+        state: room.serialize(),
+        adminToken: room.adminTokenFor(p.playerId),
+        sessionToken: joined.sessionToken,
+      });
     });
 
     on(EVENTS.JOIN_ROOM, (p, reply) => {
@@ -198,13 +215,30 @@ export function createGameServer(overrides = {}) {
       if (!nickname) throw new RoomError(ERROR_CODES.INVALID_NICKNAME, 'Nickname must be 2 to 16 characters');
       const room = rooms.get(code);
       if (!room) throw new RoomError(ERROR_CODES.ROOM_NOT_FOUND, 'That room code does not exist');
-
       if (socket.data.roomCode && socket.data.roomCode !== code) detachFromRoom();
+      if (!room.verifySession(p.playerId, socket.id, p.sessionToken)) {
+        throw new RoomError(ERROR_CODES.IDENTITY_INVALID, 'This player identity cannot be verified in this browser');
+      }
+      if (room.isKicked(p.playerId)) {
+        const { status } = room.requestRejoin(p.playerId, nickname, socket.id);
+        socket.data.rejoinRoomCode = code;
+        socket.data.rejoinPlayerId = p.playerId;
+        reply({ ok: false, code: ERROR_CODES.PLAYER_KICKED, rejoinStatus: status });
+        return;
+      }
+      if (!room.canReconnectAsHost(p.playerId, socket.id, p.adminToken)) {
+        throw new RoomError(ERROR_CODES.NOT_HOST, 'This host session cannot be claimed');
+      }
+
       socket.data.playerId = p.playerId;
       socket.data.roomCode = code;
       socket.join(code);
 
-      const { role, replacedSocketId } = room.join({ playerId: p.playerId, nickname, socketId: socket.id });
+      const { role, replacedSocketId, sessionToken } = room.join({
+        playerId: p.playerId,
+        nickname,
+        socketId: socket.id,
+      });
       if (replacedSocketId) {
         const old = io.sockets.sockets.get(replacedSocketId);
         if (old) {
@@ -213,7 +247,7 @@ export function createGameServer(overrides = {}) {
           old.data.roomCode = null;
         }
       }
-      reply({ ok: true, role, state: room.serialize() });
+      reply({ ok: true, role, state: room.serialize(), sessionToken });
     });
 
     on(EVENTS.SET_DURATION, (p, reply) => {
@@ -225,6 +259,64 @@ export function createGameServer(overrides = {}) {
     on(EVENTS.SET_READY, (p, reply) => {
       const { room, playerId } = requireMembership();
       room.setReady(playerId, p.ready);
+      reply({ ok: true });
+    });
+
+    on(EVENTS.KICK_PLAYER, (p, reply) => {
+      const { room, playerId } = requireMembership();
+      if (!isPlayerId(p.playerId)) throw new RoomError(ERROR_CODES.BAD_REQUEST, 'Invalid player id');
+      const targetSocketId = room.kick(playerId, p.playerId);
+      const targetSocket = targetSocketId && io.sockets.sockets.get(targetSocketId);
+      if (targetSocket) {
+        targetSocket.emit(EVENTS.ROOM_KICKED, { roomCode: room.code });
+        targetSocket.leave(room.code);
+        targetSocket.data.roomCode = null;
+      }
+      reply({ ok: true });
+    });
+
+    on(EVENTS.REQUEST_REJOIN, (p, reply) => {
+      const code = parseRoomCode(p.roomId);
+      if (!code || !isPlayerId(p.playerId)) throw new RoomError(ERROR_CODES.BAD_REQUEST, 'Invalid room or player id');
+      const nickname = sanitizeNickname(p.nickname);
+      if (!nickname) throw new RoomError(ERROR_CODES.INVALID_NICKNAME, 'Nickname must be 2 to 16 characters');
+      const room = rooms.get(code);
+      if (!room) throw new RoomError(ERROR_CODES.ROOM_NOT_FOUND, 'That room code does not exist');
+      if (!room.verifySession(p.playerId, socket.id, p.sessionToken)) {
+        throw new RoomError(ERROR_CODES.IDENTITY_INVALID, 'This player identity cannot be verified in this browser');
+      }
+      if (!room.isKicked(p.playerId)) throw new RoomError(ERROR_CODES.NOT_IN_ROOM, 'You are not restricted from this room');
+
+      const { status } = room.requestRejoin(p.playerId, nickname, socket.id, p.retry === true);
+      socket.data.rejoinRoomCode = code;
+      socket.data.rejoinPlayerId = p.playerId;
+      reply({ ok: true, status });
+    });
+
+    on(EVENTS.APPROVE_REJOIN, (p, reply) => {
+      const { room, playerId } = requireMembership();
+      if (!isPlayerId(p.playerId)) throw new RoomError(ERROR_CODES.BAD_REQUEST, 'Invalid player id');
+      const requestSocketId = room.approveRejoin(playerId, p.playerId);
+      const requestSocket = requestSocketId && io.sockets.sockets.get(requestSocketId);
+      if (requestSocket) requestSocket.emit(EVENTS.REJOIN_APPROVED, { roomCode: room.code });
+      reply({ ok: true });
+    });
+
+    on(EVENTS.DECLINE_REJOIN, (p, reply) => {
+      const { room, playerId } = requireMembership();
+      if (!isPlayerId(p.playerId)) throw new RoomError(ERROR_CODES.BAD_REQUEST, 'Invalid player id');
+      const requestSocketId = room.declineRejoin(playerId, p.playerId);
+      const requestSocket = requestSocketId && io.sockets.sockets.get(requestSocketId);
+      if (requestSocket) requestSocket.emit(EVENTS.REJOIN_DECLINED, { roomCode: room.code });
+      reply({ ok: true });
+    });
+
+    on(EVENTS.UNBLOCK_PLAYER, (p, reply) => {
+      const { room, playerId } = requireMembership();
+      if (!isPlayerId(p.playerId)) throw new RoomError(ERROR_CODES.BAD_REQUEST, 'Invalid player id');
+      const requestSocketId = room.unblockPlayer(playerId, p.playerId);
+      const requestSocket = requestSocketId && io.sockets.sockets.get(requestSocketId);
+      if (requestSocket) requestSocket.emit(EVENTS.REJOIN_APPROVED, { roomCode: room.code });
       reply({ ok: true });
     });
 
@@ -253,7 +345,13 @@ export function createGameServer(overrides = {}) {
       reply({ ok: true });
     });
 
-    socket.on('disconnect', () => detachFromRoom());
+    socket.on('disconnect', () => {
+      const rejoinRoom = socket.data.rejoinRoomCode && rooms.get(socket.data.rejoinRoomCode);
+      if (rejoinRoom && socket.data.rejoinPlayerId) {
+        rejoinRoom.disconnectRejoinRequest(socket.data.rejoinPlayerId, socket.id);
+      }
+      detachFromRoom();
+    });
   });
 
   return {

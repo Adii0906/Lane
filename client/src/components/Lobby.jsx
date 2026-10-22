@@ -1,6 +1,5 @@
 import { DURATIONS, MAX_RACERS, MIN_RACERS } from '@shared/constants.js';
 import { useRoom } from '../state/RoomContext.jsx';
-import InviteBox from './InviteBox.jsx';
 import PlayerCard from './PlayerCard.jsx';
 import styles from './Lobby.module.css';
 
@@ -23,7 +22,6 @@ export default function Lobby() {
           <p className={styles.kicker}>Lobby</p>
           <h1 className={styles.title}>Get your friends on the grid</h1>
         </div>
-        <InviteBox code={room.code} />
       </div>
 
       <section aria-label="Racers" className={styles.grid}>

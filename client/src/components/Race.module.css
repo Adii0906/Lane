@@ -9,7 +9,7 @@
   border-radius: var(--radius);
   overflow: hidden;
   /* Fixed height per breakpoint: the track never causes layout shift. */
-  height: 280px;
+  height: 300px;
   background: var(--asphalt-2);
   box-shadow: 0 0 0 1px var(--asphalt-3), 0 18px 40px rgba(0, 0, 0, 0.35);
   touch-action: manipulation;
@@ -26,12 +26,12 @@
 
 @media (max-width: 720px) {
   .trackWrap {
-    height: 210px;
+    height: 226px;
   }
 }
 
 @media (max-width: 420px) {
   .trackWrap {
-    height: 190px;
+    height: 200px;
   }
 }

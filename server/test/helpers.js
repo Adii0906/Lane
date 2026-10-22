@@ -20,6 +20,8 @@ export class TestClient {
     this.events = [];
     this.waiters = [];
     this.state = null;
+    this.adminToken = null;
+    this.sessionTokens = new Map();
     this.socket = null;
   }
 
@@ -28,6 +30,8 @@ export class TestClient {
     this.socket.onAny((event, payload) => {
       this.events.push({ event, payload });
       if (event === EVENTS.ROOM_STATE) this.state = payload;
+      if (event === EVENTS.ROOM_ADMIN) this.adminToken = payload.token;
+      if (event === EVENTS.ROOM_ADMIN_STATE) this.adminState = payload;
       for (const w of [...this.waiters]) {
         if (w.event === event && w.pred(payload)) {
           this.waiters.splice(this.waiters.indexOf(w), 1);
@@ -68,13 +72,25 @@ export class TestClient {
   }
 
   async create() {
-    const res = await this.emit(EVENTS.CREATE_ROOM, { playerId: this.playerId });
+    const res = await this.emit(EVENTS.CREATE_ROOM, { playerId: this.playerId, nickname: this.nickname });
+    if (!res.ok) throw new Error(`room creation failed: ${res.code}`);
+    this.state = res.state;
+    if (res.adminToken) this.adminToken = res.adminToken;
+    if (res.sessionToken) this.sessionTokens.set(res.code, res.sessionToken);
     return res.code;
   }
 
   async join(roomId) {
-    const res = await this.emit(EVENTS.JOIN_ROOM, { roomId, playerId: this.playerId, nickname: this.nickname });
+    const res = await this.emit(EVENTS.JOIN_ROOM, {
+      roomId,
+      playerId: this.playerId,
+      nickname: this.nickname,
+      adminToken: this.adminToken,
+      sessionToken: this.sessionTokens.get(roomId),
+    });
     if (res.ok) this.state = res.state;
+    if (res.adminToken) this.adminToken = res.adminToken;
+    if (res.sessionToken) this.sessionTokens.set(roomId, res.sessionToken);
     return res;
   }
 

@@ -226,6 +226,25 @@ describe('Phase 2: race engine', () => {
       closeAll(clients);
     });
 
+    test('kicking a racer during a race marks them DNF and blocks further input', async () => {
+      const { code, clients } = await makeRoom(server, ['Host', 'Guest']);
+      await startRace(clients, 120);
+      const kicked = clients[1].waitFor(EVENTS.ROOM_KICKED);
+      const removed = await clients[0].emit(EVENTS.KICK_PLAYER, { playerId: clients[1].playerId });
+      assert.equal(removed.ok, true);
+      await kicked;
+
+      const state = await clients[0].waitForState(
+        (s) => s.race?.progress[clients[1].playerId]?.dnf === true,
+      );
+      assert.equal(state.players.find((p) => p.id === clients[1].playerId).connected, false);
+      const progress = await clients[1].emit(EVENTS.PROGRESS, { correctIndex: 1, errorCount: 0, keystrokes: 1 });
+      assert.equal(progress.code, ERROR_CODES.NOT_IN_ROOM);
+      const rejoin = await clients[1].join(code);
+      assert.equal(rejoin.code, ERROR_CODES.PLAYER_KICKED);
+      closeAll(clients);
+    });
+
     test('rematch returns to the lobby with ready reset, and a second race works', async () => {
       const { clients } = await makeRoom(server, ['Ann', 'Ben']);
       const ended = clients[0].waitFor(EVENTS.RACE_END, () => true, 10000);

@@ -2,6 +2,7 @@
 // The room never touches sockets directly. It talks to the outside world through `hooks`,
 // which keeps it easy to test and easy to reason about.
 
+import { randomBytes, timingSafeEqual } from 'node:crypto';
 import {
   CAR_COLORS,
   DEFAULT_DURATION,
@@ -43,9 +44,12 @@ export class Room {
     this.hooks = hooks;
     this.phase = PHASE.LOBBY;
     this.hostId = null;
+    this.adminToken = randomBytes(32).toString('base64url');
     this.duration = DEFAULT_DURATION;
     this.racers = new Map(); // playerId -> racer
     this.spectators = new Map(); // playerId -> spectator
+    this.blockedPlayers = new Map();
+    this.rejoinRequests = new Map();
     this.lastActivity = cfg.now();
     this.countdownEndsAt = null;
     this.passage = null;
@@ -80,8 +84,68 @@ export class Room {
     return null;
   }
 
+  isKicked(playerId) {
+    return this.blockedPlayers.has(playerId);
+  }
+
+  canReconnectAsHost(playerId, socketId, token) {
+    if (playerId !== this.hostId) return true;
+    const host = this.racers.get(playerId);
+    if (host?.connected && host.socketId === socketId) return true;
+    if (typeof token !== 'string' || token.length !== this.adminToken.length) return false;
+    const candidate = Buffer.from(token);
+    const expected = Buffer.from(this.adminToken);
+    return candidate.length === expected.length && timingSafeEqual(candidate, expected);
+  }
+
+  adminTokenFor(playerId) {
+    return playerId === this.hostId ? this.adminToken : null;
+  }
+
+  verifySession(playerId, socketId, token) {
+    const member = this.racers.get(playerId) ?? this.spectators.get(playerId);
+    const expectedToken = member?.sessionToken ?? this.blockedPlayers.get(playerId)?.sessionToken;
+    if (!expectedToken || (member?.connected && member.socketId === socketId)) return true;
+    if (typeof token !== 'string' || token.length !== expectedToken.length) return false;
+    const candidate = Buffer.from(token);
+    const expected = Buffer.from(expectedToken);
+    return candidate.length === expected.length && timingSafeEqual(candidate, expected);
+  }
+
+  requestRejoin(playerId, nickname, socketId, retry = false) {
+    const blocked = this.blockedPlayers.get(playerId);
+    if (!blocked) return { status: 'approved' };
+    const existing = this.rejoinRequests.get(playerId);
+    if (existing?.status === 'pending') {
+      existing.socketId = socketId;
+      existing.nickname = nickname;
+      blocked.nickname = nickname;
+      this.broadcastAdminState();
+      return { status: 'pending' };
+    }
+    if (existing?.status === 'declined' && !retry) return { status: 'declined' };
+
+    this.rejoinRequests.set(playerId, {
+      id: playerId,
+      nickname,
+      requestedAt: this.cfg.now(),
+      status: 'pending',
+      socketId,
+    });
+    blocked.nickname = nickname;
+    this.touch();
+    this.broadcastAdminState();
+    return { status: 'pending' };
+  }
+
+  disconnectRejoinRequest(playerId, socketId) {
+    const request = this.rejoinRequests.get(playerId);
+    if (request?.socketId === socketId) request.socketId = null;
+  }
+
   /** Returns { role, replacedSocketId } */
   join({ playerId, nickname, socketId }) {
+    if (this.isKicked(playerId)) fail(ERROR_CODES.PLAYER_KICKED, 'You were removed from this room');
     this.touch();
     let replacedSocketId = null;
 
@@ -98,7 +162,11 @@ export class Room {
       if (this.spectators.has(playerId)) this.promoteSpectators();
       this.ensureHost();
       this.broadcastState();
-      return { role: this.roleOf(playerId), replacedSocketId };
+      return {
+        role: this.roleOf(playerId),
+        replacedSocketId,
+        sessionToken: existing.sessionToken,
+      };
     }
 
     const member = {
@@ -109,6 +177,7 @@ export class Room {
       joinedAt: this.cfg.now(),
       joinSeq: this.joinSeq++,
       graceTimer: null,
+      sessionToken: randomBytes(32).toString('base64url'),
     };
 
     if (this.phase === PHASE.LOBBY && this.racers.size < MAX_RACERS) {
@@ -119,7 +188,7 @@ export class Room {
     }
     this.ensureHost();
     this.broadcastState();
-    return { role: this.roleOf(playerId), replacedSocketId };
+    return { role: this.roleOf(playerId), replacedSocketId, sessionToken: member.sessionToken };
   }
 
   addRacer(member) {
@@ -157,6 +226,7 @@ export class Room {
       member.stalled = false;
       if (this.phase === PHASE.COUNTDOWN) this.cancelCountdown(`${member.nickname} disconnected`);
       member.graceTimer = setTimeout(() => this.onGraceExpired(member.id), this.cfg.graceMs);
+      this.ensureHost();
     } else {
       member.graceTimer = setTimeout(() => {
         const s = this.spectators.get(member.id);
@@ -238,16 +308,108 @@ export class Room {
     this.broadcastState();
   }
 
+  kick(adminId, playerId) {
+    if (adminId !== this.hostId) fail(ERROR_CODES.NOT_HOST, 'Only the host can remove a player');
+    if (adminId === playerId) fail(ERROR_CODES.BAD_REQUEST, 'The host cannot remove themselves');
+    if (this.blockedPlayers.has(playerId)) fail(ERROR_CODES.NOT_IN_ROOM, 'That player is not in this room');
+    const racer = this.racers.get(playerId);
+    const spectator = this.spectators.get(playerId);
+    const member = racer ?? spectator;
+    if (!member) fail(ERROR_CODES.NOT_IN_ROOM, 'That player is not in this room');
+
+    this.touch();
+    this.blockedPlayers.set(playerId, {
+      id: playerId,
+      nickname: member.nickname,
+      kickedAt: this.cfg.now(),
+      sessionToken: member.sessionToken,
+    });
+    this.rejoinRequests.delete(playerId);
+    const socketId = member.socketId;
+    this.clearGrace(member);
+
+    if (spectator) {
+      this.spectators.delete(playerId);
+    } else if (this.phase === PHASE.RACING) {
+      racer.connected = false;
+      racer.socketId = null;
+      racer.left = true;
+      if (!racer.finishedAt) {
+        racer.dnf = true;
+        racer.leftAt = this.cfg.now();
+      }
+    } else {
+      this.racers.delete(playerId);
+      if (this.phase === PHASE.COUNTDOWN) this.cancelCountdown(`${racer.nickname} was removed by the host`);
+      if (this.phase === PHASE.RESULTS && this.results) {
+        this.results.rows = this.results.rows
+          .filter((row) => row.playerId !== playerId)
+          .map((row, index) => ({ ...row, position: index + 1 }));
+      }
+    }
+
+    this.ensureHost();
+    if (this.phase === PHASE.LOBBY) this.promoteSpectators();
+    this.broadcastState();
+    if (this.phase === PHASE.RACING) this.checkRaceEnd();
+    return socketId;
+  }
+
+  approveRejoin(adminId, playerId) {
+    if (adminId !== this.hostId) fail(ERROR_CODES.NOT_HOST, 'Only the host can approve a rejoin request');
+    const blocked = this.blockedPlayers.get(playerId);
+    if (!blocked) fail(ERROR_CODES.NOT_IN_ROOM, 'That player is not restricted');
+    const request = this.rejoinRequests.get(playerId);
+    const socketId = request?.socketId ?? null;
+    this.blockedPlayers.delete(playerId);
+    this.rejoinRequests.delete(playerId);
+    this.touch();
+    this.broadcastState();
+    return socketId;
+  }
+
+  declineRejoin(adminId, playerId) {
+    if (adminId !== this.hostId) fail(ERROR_CODES.NOT_HOST, 'Only the host can decline a rejoin request');
+    const request = this.rejoinRequests.get(playerId);
+    if (!request || request.status !== 'pending') fail(ERROR_CODES.NOT_IN_ROOM, 'No pending request from that player');
+    request.status = 'declined';
+    this.touch();
+    this.broadcastAdminState();
+    return request.socketId;
+  }
+
+  unblockPlayer(adminId, playerId) {
+    if (adminId !== this.hostId) fail(ERROR_CODES.NOT_HOST, 'Only the host can allow a player to rejoin');
+    if (!this.blockedPlayers.has(playerId)) fail(ERROR_CODES.NOT_IN_ROOM, 'That player is not restricted');
+    const request = this.rejoinRequests.get(playerId);
+    const socketId = request?.socketId ?? null;
+    this.blockedPlayers.delete(playerId);
+    this.rejoinRequests.delete(playerId);
+    this.touch();
+    this.broadcastState();
+    return socketId;
+  }
+
   /** Host = longest-present racer, preferring connected ones. */
   ensureHost() {
     if (this.hostId && this.racers.has(this.hostId)) {
       const host = this.racers.get(this.hostId);
-      if (host.connected || !host.left) return;
+      const anotherConnectedRacer = [...this.racers.values()].some((r) => r.connected && r.id !== host.id);
+      if (host.connected || (!host.left && !anotherConnectedRacer)) return;
     }
     const candidates = [...this.racers.values()]
       .filter((r) => !r.left)
       .sort((a, b) => Number(b.connected) - Number(a.connected) || a.joinSeq - b.joinSeq);
-    this.hostId = candidates[0]?.id ?? null;
+    const nextHost = candidates[0] ?? null;
+    if (nextHost?.id === this.hostId) return;
+    this.hostId = nextHost?.id ?? null;
+    this.adminToken = randomBytes(32).toString('base64url');
+    if (nextHost?.connected && nextHost.socketId) {
+      this.hooks.emitTo(nextHost.socketId, EVENTS.ROOM_ADMIN, {
+        roomCode: this.code,
+        token: this.adminToken,
+      });
+    }
   }
 
   /** In LOBBY, fill free seats with the longest-waiting connected spectators. */
@@ -569,7 +731,13 @@ export class Room {
         color: r.color,
         ready: r.ready,
         connected: r.connected,
+        kicked: this.blockedPlayers.has(r.id),
         isHost: r.id === this.hostId,
+      })),
+      spectators: [...this.spectators.values()].map((s) => ({
+        id: s.id,
+        nickname: s.nickname,
+        connected: s.connected,
       })),
       spectatorCount: [...this.spectators.values()].filter((s) => s.connected).length,
       countdownEndsAt: this.phase === PHASE.COUNTDOWN ? this.countdownEndsAt : null,
@@ -600,5 +768,18 @@ export class Room {
 
   broadcastState() {
     this.hooks.broadcast(EVENTS.ROOM_STATE, this.serialize());
+    this.broadcastAdminState();
+  }
+
+  broadcastAdminState() {
+    const host = this.racers.get(this.hostId);
+    if (!host?.connected || !host.socketId) return;
+    this.hooks.emitTo(host.socketId, EVENTS.ROOM_ADMIN_STATE, {
+      roomCode: this.code,
+      blockedPlayers: [...this.blockedPlayers.values()].map(({ id, nickname, kickedAt }) => ({ id, nickname, kickedAt })),
+      rejoinRequests: [...this.rejoinRequests.values()]
+        .filter((request) => request.status === 'pending')
+        .map(({ id, nickname, requestedAt }) => ({ id, nickname, requestedAt })),
+    });
   }
 }

@@ -10,7 +10,7 @@
   justify-content: space-between;
   gap: 12px;
   padding: 14px clamp(16px, 4vw, 32px);
-  max-width: 1120px;
+  max-width: 1200px;
   width: 100%;
   margin: 0 auto;
 }
@@ -20,7 +20,7 @@
   align-items: center;
   gap: 10px;
   font-weight: 800;
-  font-size: 22px;
+  font-size: 24px;
   letter-spacing: -0.03em;
   color: var(--paint);
   text-decoration: none;
@@ -44,8 +44,8 @@
   font-family: var(--font-mono);
   font-weight: 700;
   letter-spacing: 0.18em;
-  font-size: 14px;
-  padding: 6px 8px 6px 12px;
+  font-size: 15px;
+  padding: 7px 9px 7px 13px;
   border-radius: var(--radius-sm);
   background: var(--asphalt-2);
   border: 1px solid var(--asphalt-4);
@@ -82,7 +82,7 @@
 .main {
   flex: 1;
   width: 100%;
-  max-width: 1120px;
+  max-width: 1200px;
   margin: 0 auto;
   padding: 8px clamp(16px, 4vw, 32px) 48px;
 }

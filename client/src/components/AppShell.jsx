@@ -2,10 +2,23 @@ import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useRoom } from '../state/RoomContext.jsx';
 import SoundToggle from './SoundToggle.jsx';
+import RoomManagement from './RoomManagement.jsx';
 import styles from './AppShell.module.css';
 
 export default function AppShell({ children }) {
-  const { connection, notice, dismissNotice, room } = useRoom();
+  const {
+    connection,
+    notice,
+    dismissNotice,
+    room,
+    isHost,
+    playerId,
+    kickPlayer,
+    adminState,
+    approveRejoin,
+    declineRejoin,
+    unblockPlayer,
+  } = useRoom();
 
   useEffect(() => {
     if (!notice) return undefined;
@@ -29,6 +42,18 @@ export default function AppShell({ children }) {
           <SoundToggle />
         </div>
       </header>
+
+      {room && isHost && (
+        <RoomManagement
+          room={room}
+          playerId={playerId}
+          adminState={adminState}
+          onKick={kickPlayer}
+          onApprove={approveRejoin}
+          onDecline={declineRejoin}
+          onUnblock={unblockPlayer}
+        />
+      )}
 
       {connection === 'offline' && (
         <div className={styles.banner} role="status">

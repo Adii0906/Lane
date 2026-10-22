@@ -43,7 +43,7 @@ export class TrackRenderer {
     const roadTop = skyH + curb;
     const roadBottom = h - curb;
     const laneH = (roadBottom - roadTop) / LANES;
-    const carL = Math.round(Math.min(laneH * 1.5, w * 0.14, 100));
+    const carL = Math.round(Math.min(laneH * 1.62, w * 0.15, 110));
     const pad = Math.max(10, Math.round(w * 0.02));
     const startX = pad + carL + 6;
     const finishX = w - Math.max(26, Math.round(w * 0.05));

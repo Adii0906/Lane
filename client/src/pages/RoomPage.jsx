@@ -13,7 +13,7 @@ export default function RoomPage() {
   const { roomId = '' } = useParams();
   const code = roomId.toUpperCase();
   const [nickname, setNickname] = useState(getNickname);
-  const { room, joinStatus, joinRoom, leaveRoom, retryJoin } = useRoom();
+  const { room, joinStatus, joinRoom, leaveRoom, retryJoin, rejoinStatus, requestRejoin } = useRoom();
 
   const screen = !room ? 'none' : room.phase === PHASE.COUNTDOWN || room.phase === PHASE.RACING ? 'race' : room.phase;
   useEffect(() => {
@@ -51,6 +51,48 @@ export default function RoomPage() {
       <Message title="Room not found" body={`There is no race with the code ${code}. It may have expired after being empty for a while.`}>
         <Link to="/" className={styles.primary}>
           Create a new race
+        </Link>
+      </Message>
+    );
+  }
+
+  if (rejoinStatus) {
+    return (
+      <section className={`${styles.gate} fade-in`}>
+        <p className={styles.kicker}>{rejoinStatus === 'declined' ? 'Pit lane update' : 'Rejoin request'}</p>
+        <h1 className={styles.gateTitle}>
+          {rejoinStatus === 'declined' ? 'The host has not approved yet' : 'Waiting for the green light!'}
+        </h1>
+        <p className={styles.muted}>
+          Looks like you&apos;ve been sent to the pit lane. Don&apos;t worry, your racing career isn&apos;t over!
+          The host needs to approve your comeback before you can rejoin. 🚗
+        </p>
+        {rejoinStatus === 'declined' && (
+          <button type="button" className={styles.primary} onClick={() => requestRejoin(true)}>
+            Request again
+          </button>
+        )}
+      </section>
+    );
+  }
+
+  if (joinStatus.error === ERROR_CODES.PLAYER_KICKED) return null;
+
+  if (joinStatus.error === ERROR_CODES.NOT_HOST) {
+    return (
+      <Message title="Host session not verified" body="This room could not verify your host session. Ask the current host for an invite or create a new race.">
+        <Link to="/" className={styles.primary}>
+          Create a new race
+        </Link>
+      </Message>
+    );
+  }
+
+  if (joinStatus.error === ERROR_CODES.IDENTITY_INVALID) {
+    return (
+      <Message title="Player identity not verified" body="Open this invite in the browser that originally joined the room.">
+        <Link to="/" className={styles.primary}>
+          Go home
         </Link>
       </Message>
     );

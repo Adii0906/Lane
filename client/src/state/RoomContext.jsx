@@ -9,7 +9,14 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
 import { ERROR_CODES, EVENTS, PHASE, ROLE } from '@shared/index.js';
-import { getPlayerId } from '../lib/identity.js';
+import {
+  getHostToken,
+  getNickname,
+  getPlayerId,
+  getRoomSessionToken,
+  saveHostToken,
+  saveRoomSessionToken,
+} from '../lib/identity.js';
 import { sound } from '../lib/sound.js';
 
 const RoomContext = createContext(null);
@@ -51,6 +58,8 @@ export function RoomProvider({ children }) {
   const [notice, setNotice] = useState(null);
   const [hud, setHud] = useState(null);
   const [lastFinish, setLastFinish] = useState(null);
+  const [rejoinStatus, setRejoinStatus] = useState(null);
+  const [adminState, setAdminState] = useState({ blockedPlayers: [], rejoinRequests: [] });
 
   const now = useCallback(() => Date.now() + offsetRef.current, []);
   const pushNotice = useCallback((text, tone = 'info') => {
@@ -67,19 +76,34 @@ export function RoomProvider({ children }) {
           roomId: target.roomId,
           playerId,
           nickname: target.nickname,
+          adminToken: getHostToken(target.roomId),
+          sessionToken: getRoomSessionToken(target.roomId),
         });
       } catch {
         return; // connection dropped mid-join; the reconnect handler retries
       }
       if (joinRef.current !== target) return;
       if (!res.ok) {
-        if (res.code === ERROR_CODES.ROOM_NOT_FOUND || res.code === ERROR_CODES.INVALID_NICKNAME) {
-          joinRef.current = null;
+        if (
+          res.code === ERROR_CODES.ROOM_NOT_FOUND ||
+          res.code === ERROR_CODES.INVALID_NICKNAME ||
+          res.code === ERROR_CODES.PLAYER_KICKED ||
+          res.code === ERROR_CODES.NOT_HOST
+        ) {
+          if (res.code !== ERROR_CODES.PLAYER_KICKED) joinRef.current = null;
         }
+        if (res.code === ERROR_CODES.PLAYER_KICKED) {
+          setRejoinStatus(res.rejoinStatus ?? 'pending');
+          setAdminState({ blockedPlayers: [], rejoinRequests: [] });
+          return;
+        }
+        if (res.code === ERROR_CODES.IDENTITY_INVALID) joinRef.current = null;
         setJoinStatus({ state: 'error', error: res.code });
         return;
       }
+      if (res.sessionToken) saveRoomSessionToken(target.roomId, res.sessionToken);
       setRoom(res.state);
+      setRejoinStatus(null);
       setJoinStatus({ state: 'joined', error: null });
       if (res.role === ROLE.SPECTATOR) {
         pushNotice(
@@ -108,6 +132,29 @@ export function RoomProvider({ children }) {
     socket.on(EVENTS.ROOM_STATE, (state) => {
       if (!joinRef.current || state.code !== joinRef.current.roomId) return;
       setRoom(state);
+    });
+    socket.on(EVENTS.ROOM_KICKED, () => {
+      setRoom(null);
+      setRejoinStatus('pending');
+      setJoinStatus({ state: 'error', error: null });
+    });
+    socket.on(EVENTS.ROOM_ADMIN, ({ roomCode, token }) => {
+      if (typeof roomCode === 'string' && typeof token === 'string') saveHostToken(roomCode, token);
+    });
+    socket.on(EVENTS.ROOM_ADMIN_STATE, (state) => {
+      if (joinRef.current?.roomId === state.roomCode) {
+        setAdminState({
+          blockedPlayers: state.blockedPlayers ?? [],
+          rejoinRequests: state.rejoinRequests ?? [],
+        });
+      }
+    });
+    socket.on(EVENTS.REJOIN_APPROVED, ({ roomCode }) => {
+      if (joinRef.current?.roomId !== roomCode) return;
+      emitJoin(joinRef.current);
+    });
+    socket.on(EVENTS.REJOIN_DECLINED, ({ roomCode }) => {
+      if (joinRef.current?.roomId === roomCode) setRejoinStatus('declined');
     });
     socket.on(EVENTS.RACE_START, () => {
       raceRef.current.update = null;
@@ -139,6 +186,7 @@ export function RoomProvider({ children }) {
         case ERROR_CODES.SESSION_REPLACED:
           joinRef.current = null;
           setRoom(null);
+          setRejoinStatus(null);
           setJoinStatus({ state: 'error', error: ERROR_CODES.SESSION_REPLACED });
           break;
         case ERROR_CODES.ROOM_NOT_FOUND:
@@ -158,9 +206,16 @@ export function RoomProvider({ children }) {
 
   // ------------------------------------------------------------------ actions
 
-  const createRoom = useCallback(async () => {
-    const res = await socketRef.current.timeout(5000).emitWithAck(EVENTS.CREATE_ROOM, { playerId });
+  const createRoom = useCallback(async (nickname = getNickname()) => {
+    const res = await socketRef.current
+      .timeout(5000)
+      .emitWithAck(EVENTS.CREATE_ROOM, { playerId, nickname });
     if (!res.ok) throw new Error(res.code);
+    if (res.adminToken) saveHostToken(res.code, res.adminToken);
+    if (res.sessionToken) saveRoomSessionToken(res.code, res.sessionToken);
+    joinRef.current = { roomId: res.code, nickname };
+    setRoom(res.state);
+    setJoinStatus({ state: 'joined', error: null });
     return res.code;
   }, [playerId]);
 
@@ -179,6 +234,7 @@ export function RoomProvider({ children }) {
       }
       if (current && current.roomId === roomId && current.nickname === nickname) return;
       if (current?.roomId !== roomId) setRoom(null);
+      if (current?.roomId !== roomId) setAdminState({ blockedPlayers: [], rejoinRequests: [] });
       const target = { roomId, nickname };
       joinRef.current = target;
       setJoinStatus({ state: 'joining', error: null });
@@ -213,6 +269,59 @@ export function RoomProvider({ children }) {
 
   const setReady = useCallback((ready) => emitQuiet(EVENTS.SET_READY, { ready }), [emitQuiet]);
   const setDuration = useCallback((duration) => emitQuiet(EVENTS.SET_DURATION, { duration }), [emitQuiet]);
+  const kickPlayer = useCallback(
+    async (targetId) => {
+      try {
+        const response = await socketRef.current
+          .timeout(5000)
+          .emitWithAck(EVENTS.KICK_PLAYER, { playerId: targetId });
+        if (!response.ok) pushNotice('That player could not be removed.', 'warn');
+      } catch {
+        pushNotice('Could not reach the server to remove that player.', 'warn');
+      }
+    },
+    [pushNotice],
+  );
+  const manageRejoin = useCallback(
+    async (event, targetId) => {
+      try {
+        const response = await socketRef.current.timeout(5000).emitWithAck(event, { playerId: targetId });
+        if (!response.ok) pushNotice('That player-management action could not be completed.', 'warn');
+      } catch {
+        pushNotice('Could not reach the server to update room access.', 'warn');
+      }
+    },
+    [pushNotice],
+  );
+  const approveRejoin = useCallback(
+    (targetId) => manageRejoin(EVENTS.APPROVE_REJOIN, targetId),
+    [manageRejoin],
+  );
+  const declineRejoin = useCallback(
+    (targetId) => manageRejoin(EVENTS.DECLINE_REJOIN, targetId),
+    [manageRejoin],
+  );
+  const unblockPlayer = useCallback(
+    (targetId) => manageRejoin(EVENTS.UNBLOCK_PLAYER, targetId),
+    [manageRejoin],
+  );
+  const requestRejoin = useCallback(async (retry = false) => {
+    const target = joinRef.current;
+    if (!target) return;
+    try {
+      const response = await socketRef.current.timeout(5000).emitWithAck(EVENTS.REQUEST_REJOIN, {
+        roomId: target.roomId,
+        playerId,
+        nickname: target.nickname,
+        sessionToken: getRoomSessionToken(target.roomId),
+        retry,
+      });
+      if (response.ok) setRejoinStatus(response.status);
+      else pushNotice('Could not send the rejoin request.', 'warn');
+    } catch {
+      pushNotice('Could not reach the server to request a rejoin.', 'warn');
+    }
+  }, [playerId, pushNotice]);
   const rematch = useCallback(() => emitQuiet(EVENTS.REMATCH, {}), [emitQuiet]);
   const sendProgress = useCallback((p) => socketRef.current?.emit(EVENTS.PROGRESS, p), []);
   const dismissNotice = useCallback(() => setNotice(null), []);
@@ -238,6 +347,13 @@ export function RoomProvider({ children }) {
       retryJoin,
       setReady,
       setDuration,
+      kickPlayer,
+      adminState,
+      rejoinStatus,
+      approveRejoin,
+      declineRejoin,
+      unblockPlayer,
+      requestRejoin,
       rematch,
       sendProgress,
       pushNotice,
@@ -245,7 +361,8 @@ export function RoomProvider({ children }) {
     }),
     [
       playerId, connection, room, me, joinStatus, notice, lastFinish, now, createRoom, joinRoom,
-      leaveRoom, retryJoin, setReady, setDuration, rematch, sendProgress, pushNotice, dismissNotice,
+      leaveRoom, retryJoin, setReady, setDuration, kickPlayer, adminState, rejoinStatus, approveRejoin,
+      declineRejoin, unblockPlayer, requestRejoin, rematch, sendProgress, pushNotice, dismissNotice,
     ],
   );
 

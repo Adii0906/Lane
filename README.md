@@ -11,7 +11,7 @@ npm i
 npm run dev
 ```
 
-- Client (Vite): http://localhost:5173
+- Client (Vite):ttp://localhost:5173
 - Server (Express + Socket.IO): http://localhost:3001 (Vite proxies `/socket.io` to it)
 
 Open the client in two browser windows (or a normal and a private window, so each gets its own guest id) to race yourself.
@@ -21,6 +21,8 @@ Racing alone? Drop bots into your room:
 ```bash
 node server/scripts/bots.js <ROOMCODE> 45 70   # two bots at 45 and 70 WPM
 ```
+
+The room creator starts as host. Hosts can share the invite link and kick racers or spectators. Kicked players are temporarily restricted and can request to rejoin; the host can approve or decline requests, or allow access from the Blocked Players list. Player identity and a room-scoped session token prevent a display-name change from bypassing a restriction. If a host disconnects while another racer is connected, host controls pass to that racer.
 
 ## Tests
 
@@ -32,8 +34,8 @@ Runs the Phase 1 and Phase 2 acceptance suites against real in-process servers w
 
 | Suite | Covers |
 | --- | --- |
-| `server/test/phase1.rooms.test.js` | 3 racers join, 4th spectates, 1 player cannot start, all-ready starts countdown, un-ready and disconnect cancel it, join during countdown spectates, host promotion, spectator promotion, refresh restores seat, seat freed after grace, host-only timer, validation, rate limiting |
-| `server/test/phase2.race.test.js` | stall mechanic and input reconciliation, passage rules, synced countdown, bots finishing in order, time-up ranking with accuracy tie-break, cheat rejection (jumps, backward, counter mismatch, over 300 WPM), stalled broadcast, rematch reset, every timer option, mid-race DNF |
+| `server/test/phase1.rooms.test.js` | 3 racers join, 4th spectates, creator host, host-only kicking, rejoin requests, approval, decline, unblock, identity verification, duplicate request handling, kick during countdown, 1 player cannot start, all-ready starts countdown, un-ready and disconnect cancel it, join during countdown spectates, host promotion, spectator promotion, refresh restores seat, seat freed after grace, host-only timer, validation, rate limiting |
+| `server/test/phase2.race.test.js` | stall mechanic and input reconciliation, passage rules, synced countdown, bots finishing in order, time-up ranking with accuracy tie-break, cheat rejection (jumps, backward, counter mismatch, over 300 WPM), stalled broadcast, kick during a race, rematch reset, every timer option, mid-race DNF |
 
 ## Production build
 

@@ -19,7 +19,7 @@ export default function Landing() {
   async function handleCreate(nickname) {
     saveNickname(nickname);
     try {
-      const code = await createRoom();
+      const code = await createRoom(nickname);
       navigate(`/r/${code}`);
     } catch {
       pushNotice('Could not create a race. Check your connection and try again.', 'warn');

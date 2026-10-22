@@ -3,6 +3,8 @@ import { NICKNAME_MAX, NICKNAME_MIN } from '@shared/constants.js';
 
 const ID_KEY = 'lane.playerId';
 const NAME_KEY = 'lane.nickname';
+const HOST_TOKEN_PREFIX = 'lane.hostToken.';
+const ROOM_SESSION_PREFIX = 'lane.roomSession.';
 
 function safeGet(key) {
   try {
@@ -43,6 +45,10 @@ export function getPlayerId() {
 
 export const getNickname = () => safeGet(NAME_KEY) ?? '';
 export const saveNickname = (name) => safeSet(NAME_KEY, name);
+export const getHostToken = (roomId) => safeGet(`${HOST_TOKEN_PREFIX}${roomId}`);
+export const saveHostToken = (roomId, token) => safeSet(`${HOST_TOKEN_PREFIX}${roomId}`, token);
+export const getRoomSessionToken = (roomId) => safeGet(`${ROOM_SESSION_PREFIX}${roomId}`);
+export const saveRoomSessionToken = (roomId, token) => safeSet(`${ROOM_SESSION_PREFIX}${roomId}`, token);
 
 /** Mirrors the server sanitizer closely enough for instant feedback. The server still decides. */
 export function cleanNickname(raw) {
